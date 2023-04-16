@@ -167,7 +167,21 @@ class OnlyOfficePlugin extends PluginBase {
         }
         return $histDir;
     }
-
+    
+    /**
+     * 判断当前协议是否为HTTPS
+     */
+    private function is_https() {
+        if ( !empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off') {
+            return true;
+        } elseif ( isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https' ) {
+            return true;
+        } elseif ( !empty($_SERVER['HTTP_FRONT_END_HTTPS']) && strtolower($_SERVER['HTTP_FRONT_END_HTTPS']) !== 'off') {
+            return true;
+        }
+        return false;
+    }
+    
     public function getHistory($histDir,$curInfo, $curUrl,$ext) {
         // 文档历史由三个文件提供信息
         // history.json 保存基本信息
@@ -282,7 +296,20 @@ class OnlyOfficePlugin extends PluginBase {
         }
         $data = json_decode($body_stream, TRUE);
         if ($data["status"] == 2) {
-            if (($new_office_content = file_get_contents($data["url"])) === FALSE) {
+            
+            if ($this->is_https()){
+                $stream_opts = [
+                    "ssl" => [
+                        "verify_peer"=>false,
+                        "verify_peer_name"=>false,
+                    ]
+                ];
+                $context = stream_context_create($stream_opts);
+            }else{
+                $context = null;
+            }
+            
+            if (($new_office_content = file_get_contents($data["url"],false,$context)) === FALSE) {
                 $response['error'] = "Bad Response";
             } else {
                 if (isset($_GET['hist'])) {
@@ -290,7 +317,7 @@ class OnlyOfficePlugin extends PluginBase {
                     $histInfo = $histDir.'/history.json';
 
                     // 读取旧历史信息并设定文档版本
-                    if (file_exists($histInfo) && $prehist = file_get_contents($histInfo)) {
+                    if (file_exists($histInfo) && $prehist = file_get_contents($histInfo,false,$context)) {
                         $history = json_decode($prehist,TRUE);
                         $version = end($history)['version'] + 1;
                     } else {
@@ -305,7 +332,7 @@ class OnlyOfficePlugin extends PluginBase {
                     $serverVersion = $data['history']['serverVersion'];
 
                     $changes = $data['history']['changes'];
-                    if ($changesData = file_get_contents($data['changesurl'])) {
+                    if ($changesData = file_get_contents($data['changesurl'],false,$context)) {
                         file_put_contents($changesFile,$changesData, LOCK_EX);
                     }
 
